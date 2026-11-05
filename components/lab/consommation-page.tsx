@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, FlaskRound, Hourglass, ShieldCheck } from 'lucide-react'
+import { CalendarDays, FlaskRound, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DailyEntry } from '@/components/lab/daily-entry/daily-entry'
 import { LabBoard } from '@/components/lab/lab-board/lab-board'
+import { AuditDashboard } from '@/components/lab/audit/audit-dashboard'
 
 const TABS = [
   { id: 'saisie', label: 'Saisie quotidienne', icon: CalendarDays },
@@ -59,20 +60,8 @@ export function ConsommationPage() {
         key={tab}
         className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
       >
-        {tab === 'saisie' ? <DailyEntry /> : tab === 'labo' ? <LabBoard /> : <ComingSoon />}
+        {tab === 'saisie' ? <DailyEntry /> : tab === 'labo' ? <LabBoard /> : <AuditDashboard />}
       </section>
-    </div>
-  )
-}
-
-function ComingSoon() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl bg-white px-6 py-24 text-center shadow-sm ring-1 ring-black/5">
-      <div className="flex size-12 items-center justify-center rounded-full bg-canvas text-brand">
-        <Hourglass className="size-5" aria-hidden="true" />
-      </div>
-      <p className="text-lg font-semibold text-brand">Bientôt disponible</p>
-      <p className="max-w-sm text-sm text-muted-foreground">Cette section est en cours de développement.</p>
     </div>
   )
 }
