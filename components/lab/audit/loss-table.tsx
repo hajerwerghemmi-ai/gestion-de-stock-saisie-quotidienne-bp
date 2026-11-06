@@ -4,19 +4,20 @@ import { Fragment, useState } from 'react'
 import { ChevronRight, PackageSearch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { roomById } from '@/lib/lab-data'
-import { formatNumber, formatRate, rateTone, type AuditRecord, type ProductStat } from '@/lib/audit-data'
+import { formatNumber, formatRate, rateTone, type AuditRecord, type ConfirmedLoss, type ProductStat } from '@/lib/audit-data'
 import { LossRateBar, TONE_STYLES } from './loss-rate-bar'
 import { ProductDrilldown, type AuditTarget } from './product-drilldown'
 
 type Props = {
   stats: ProductStat[]
   records: AuditRecord[]
+  confirmed: ConfirmedLoss[]
   onOpenAudit: (target: AuditTarget) => void
 }
 
 const COLUMNS = ['Produit', 'Consommation totale', 'Pertes confirmées', 'Taux de perte', 'Pire salle']
 
-export function LossTable({ stats, records, onOpenAudit }: Props) {
+export function LossTable({ stats, records, confirmed, onOpenAudit }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (stats.length === 0) {
@@ -111,7 +112,7 @@ export function LossTable({ stats, records, onOpenAudit }: Props) {
                     <tr id={panelId}>
                       <td colSpan={COLUMNS.length} className="px-4 pb-4 pt-1">
                         <div className="animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                          <ProductDrilldown stat={stat} records={records} onOpenAudit={onOpenAudit} />
+                          <ProductDrilldown stat={stat} records={records} confirmed={confirmed} onOpenAudit={onOpenAudit} />
                         </div>
                       </td>
                     </tr>

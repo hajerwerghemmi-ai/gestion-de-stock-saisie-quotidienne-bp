@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { toDateKey } from '@/lib/lab-data'
-import { aggregateByProduct, buildAuditHistory, HISTORY_DAYS, PRODUCT_CATEGORY, shiftDateKey } from '@/lib/audit-data'
+import { aggregateByProduct, getAuditHistory, HISTORY_DAYS, PRODUCT_CATEGORY, shiftDateKey } from '@/lib/audit-data'
+import { useLosses } from '@/components/lab/losses/loss-store'
 import { AuditFilters } from './audit-filters'
 import { AuditSummary } from './audit-summary'
 import { LossTable } from './loss-table'
@@ -27,7 +28,8 @@ export function AuditDashboard() {
 
 function AuditDashboardClient() {
   const [todayKey] = useState(() => toDateKey(new Date()))
-  const history = useMemo(() => buildAuditHistory(new Date()), [])
+  const { history, seed } = getAuditHistory()
+  const { sessionConfirmed } = useLosses()
   const maxDate = shiftDateKey(todayKey, -1)
   const minDate = shiftDateKey(todayKey, -HISTORY_DAYS)
 
@@ -50,7 +52,20 @@ function AuditDashboardClient() {
     [history, from, to, category, room],
   )
 
-  const stats = useMemo(() => aggregateByProduct(filtered), [filtered])
+  const confirmed = useMemo(
+    () =>
+      [...seed, ...sessionConfirmed].filter(
+        (l) =>
+          l.dateKey >= from &&
+          l.dateKey <= todayKey &&
+          (to === maxDate || l.dateKey <= to) &&
+          (category === 'all' || PRODUCT_CATEGORY[l.productId] === category) &&
+          (room === 'all' || l.roomId === room),
+      ),
+    [seed, sessionConfirmed, from, to, maxDate, todayKey, category, room],
+  )
+
+  const stats = useMemo(() => aggregateByProduct(filtered, confirmed), [filtered, confirmed])
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,10 +81,11 @@ function AuditDashboardClient() {
         onCategoryChange={setCategory}
         onRoomChange={setRoom}
       />
-      <AuditSummary stats={stats} incidents={filtered.filter((r) => r.ecart > 0).length} />
+      <AuditSummary stats={stats} incidents={filtered.filter((r) => r.ecart > 0).length + confirmed.length} />
       <LossTable
         stats={stats}
         records={filtered}
+        confirmed={confirmed}
         onOpenAudit={(next) => {
           setTarget(next)
           setSheetOpen(true)

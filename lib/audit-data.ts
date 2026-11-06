@@ -59,15 +59,30 @@ export type ProductStat = {
   worstRoom: RoomStat | null
 }
 
+/** A presumed loss (remainder of a replaced box never found) that was confirmed by management. */
+export type ConfirmedLoss = {
+  id: string
+  boxId: string
+  roomId: string
+  productId: string
+  lot: string
+  qty: number
+  dateKey: string
+}
+
+export type LossEvent =
+  | { kind: 'ecart'; id: string; dateKey: string; qty: number; record: AuditRecord }
+  | { kind: 'unfound'; id: string; dateKey: string; qty: number; loss: ConfirmedLoss }
+
 export type BoxHistory = {
   boxId: string
   lot: string
-  boxNo: number
+  boxNo: number | null
   firstDateKey: string
   lastDateKey: string
   consumption: number
   losses: number
-  incidents: AuditRecord[]
+  events: LossEvent[]
 }
 
 export type RateTone = 'good' | 'warn' | 'bad'
@@ -163,17 +178,20 @@ export function rateTone(rate: number): RateTone {
 }
 
 /** Ranks rooms by loss rate (losses / consumption), never by absolute losses. */
-export function aggregateByProduct(records: AuditRecord[]): ProductStat[] {
+export function aggregateByProduct(records: AuditRecord[], confirmed: ConfirmedLoss[] = []): ProductStat[] {
   const byProduct = new Map<string, Map<string, { consumption: number; losses: number }>>()
 
-  for (const record of records) {
-    const rooms = byProduct.get(record.productId) ?? new Map()
-    const current = rooms.get(record.roomId) ?? { consumption: 0, losses: 0 }
-    current.consumption += record.qty
-    current.losses += record.ecart
-    rooms.set(record.roomId, current)
-    byProduct.set(record.productId, rooms)
+  const add = (productId: string, roomId: string, consumption: number, losses: number) => {
+    const rooms = byProduct.get(productId) ?? new Map()
+    const current = rooms.get(roomId) ?? { consumption: 0, losses: 0 }
+    current.consumption += consumption
+    current.losses += losses
+    rooms.set(roomId, current)
+    byProduct.set(productId, rooms)
   }
+
+  for (const record of records) add(record.productId, record.roomId, record.qty, record.ecart)
+  for (const loss of confirmed) add(loss.productId, loss.roomId, 0, loss.qty)
 
   const stats: ProductStat[] = []
   for (const [productId, roomMap] of byProduct) {
@@ -199,7 +217,11 @@ export function aggregateByProduct(records: AuditRecord[]): ProductStat[] {
   return stats.sort((a, b) => b.rate - a.rate)
 }
 
-export function groupBoxes(records: AuditRecord[]): BoxHistory[] {
+/**
+ * Builds the per-box timeline. Confirmed "box not found" losses are attached to their box when it is part of
+ * the history, otherwise to the latest earlier box of the same lot, otherwise they get a row of their own.
+ */
+export function groupBoxes(records: AuditRecord[], confirmed: ConfirmedLoss[] = []): BoxHistory[] {
   const boxes = new Map<string, BoxHistory>()
   const sorted = [...records].sort((a, b) => a.dateKey.localeCompare(b.dateKey))
 
@@ -212,16 +234,84 @@ export function groupBoxes(records: AuditRecord[]): BoxHistory[] {
       lastDateKey: record.dateKey,
       consumption: 0,
       losses: 0,
-      incidents: [],
+      events: [],
     }
     box.lastDateKey = record.dateKey
     box.consumption += record.qty
     box.losses += record.ecart
-    if (record.ecart > 0) box.incidents.push(record)
+    if (record.ecart > 0) {
+      box.events.push({ kind: 'ecart', id: record.id, dateKey: record.dateKey, qty: record.ecart, record })
+    }
     boxes.set(record.boxId, box)
   }
 
+  for (const loss of confirmed) {
+    const event: LossEvent = { kind: 'unfound', id: loss.id, dateKey: loss.dateKey, qty: loss.qty, loss }
+    const sameLot = [...boxes.values()]
+      .filter((b) => b.lot === loss.lot && b.firstDateKey <= loss.dateKey)
+      .sort((a, b) => b.lastDateKey.localeCompare(a.lastDateKey))[0]
+    const target = boxes.get(loss.boxId) ?? sameLot
+
+    if (target) {
+      target.losses += loss.qty
+      target.lastDateKey = target.lastDateKey > loss.dateKey ? target.lastDateKey : loss.dateKey
+      target.events.push(event)
+    } else {
+      boxes.set(loss.boxId, {
+        boxId: loss.boxId,
+        lot: loss.lot,
+        boxNo: null,
+        firstDateKey: loss.dateKey,
+        lastDateKey: loss.dateKey,
+        consumption: 0,
+        losses: loss.qty,
+        events: [event],
+      })
+    }
+  }
+
+  for (const box of boxes.values()) box.events.sort((a, b) => b.dateKey.localeCompare(a.dateKey))
   return [...boxes.values()].sort((a, b) => b.lastDateKey.localeCompare(a.lastDateKey))
+}
+
+/** Historical confirmed losses: a few past boxes whose remainder was never found. */
+export function buildConfirmedSeed(history: AuditRecord[]): ConfirmedLoss[] {
+  const picks: { roomId: string; productId: string }[] = [
+    { roomId: 'biochimie', productId: 'glu' },
+    { roomId: 'serologie', productId: 'hiv' },
+    { roomId: 'hormonologie', productId: 'tsh' },
+    { roomId: 'hematologie', productId: 'nfs' },
+  ]
+
+  return picks.flatMap(({ roomId, productId }, index) => {
+    const product = productById(productId)
+    const boxes = groupBoxes(history.filter((r) => r.roomId === roomId && r.productId === productId))
+    const box = boxes[1 + (index % 2)]
+    if (!product || !box) return []
+    return [
+      {
+        id: `seed-confirmed-${box.boxId}`,
+        boxId: box.boxId,
+        roomId,
+        productId,
+        lot: box.lot,
+        qty: Math.max(2, Math.round(product.capacity * (0.04 + index * 0.015))),
+        dateKey: shiftDateKey(box.lastDateKey, 1),
+      },
+    ]
+  })
+}
+
+let historyCache: { key: string; history: AuditRecord[]; seed: ConfirmedLoss[] } | null = null
+
+/** Client-only: the simulated history is anchored on the user's local "today". */
+export function getAuditHistory() {
+  const key = toDateKey(new Date())
+  if (historyCache?.key !== key) {
+    const history = buildAuditHistory(new Date())
+    historyCache = { key, history, seed: buildConfirmedSeed(history) }
+  }
+  return historyCache
 }
 
 const numberFormat = new Intl.NumberFormat('fr-FR')

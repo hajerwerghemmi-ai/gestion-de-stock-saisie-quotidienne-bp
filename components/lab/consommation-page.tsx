@@ -1,11 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, FlaskRound, ShieldCheck } from 'lucide-react'
+import { CalendarDays, ClipboardCheck, FlaskRound, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isProvisional } from '@/lib/lab-boxes'
 import { DailyEntry } from '@/components/lab/daily-entry/daily-entry'
 import { LabBoard } from '@/components/lab/lab-board/lab-board'
 import { AuditDashboard } from '@/components/lab/audit/audit-dashboard'
+import { LossProvider, useLosses } from '@/components/lab/losses/loss-store'
+import { LossManagerSheet } from '@/components/lab/losses/loss-manager-sheet'
 
 const TABS = [
   { id: 'saisie', label: 'Saisie quotidienne', icon: CalendarDays },
@@ -16,16 +19,28 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id']
 
 export function ConsommationPage() {
+  return (
+    <LossProvider>
+      <ConsommationContent />
+      <LossManagerSheet />
+    </LossProvider>
+  )
+}
+
+function ConsommationContent() {
   const [tab, setTab] = useState<TabId>('saisie')
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-wider text-emerald-800/70">Gestion de stock</p>
-        <h1 className="text-balance text-2xl font-semibold tracking-tight text-brand md:text-3xl">Consommation</h1>
-        <p className="text-pretty text-sm text-muted-foreground">
-          Enregistrez et clôturez chaque jour les consommations de réactifs par salle.
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-emerald-800/70">Gestion de stock</p>
+          <h1 className="text-balance text-2xl font-semibold tracking-tight text-brand md:text-3xl">Consommation</h1>
+          <p className="text-pretty text-sm text-muted-foreground">
+            Enregistrez et clôturez chaque jour les consommations de réactifs par salle.
+          </p>
+        </div>
+        <LossManagerTrigger />
       </header>
 
       <div
@@ -63,5 +78,27 @@ export function ConsommationPage() {
         {tab === 'saisie' ? <DailyEntry /> : tab === 'labo' ? <LabBoard /> : <AuditDashboard />}
       </section>
     </div>
+  )
+}
+
+function LossManagerTrigger() {
+  const { boxes, setManagerOpen } = useLosses()
+  const pending = boxes.filter(isProvisional).length
+
+  return (
+    <button
+      type="button"
+      onClick={() => setManagerOpen(true)}
+      className="flex w-fit shrink-0 items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-brand shadow-sm ring-1 ring-black/10 transition-colors hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+    >
+      <ClipboardCheck className="size-4" aria-hidden="true" />
+      Gestion des pertes
+      {pending > 0 && (
+        <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold tabular-nums text-white">
+          {pending}
+          <span className="sr-only"> perte{pending > 1 ? 's' : ''} provisoire{pending > 1 ? 's' : ''} à traiter</span>
+        </span>
+      )}
+    </button>
   )
 }
