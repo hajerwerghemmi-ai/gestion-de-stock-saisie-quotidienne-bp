@@ -177,25 +177,3 @@
     @apply bg-background text-foreground;
   }
 }
-
-@keyframes dash-blink {
-  0%,
-  100% {
-    outline-color: rgb(15 41 38);
-  }
-  50% {
-    outline-color: rgb(15 41 38 / 0);
-  }
-}
-
-.box-flash {
-  outline: 2px dashed rgb(15 41 38);
-  outline-offset: 3px;
-  animation: dash-blink 0.6s ease-in-out 6;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .box-flash {
-    animation: none;
-  }
-}
